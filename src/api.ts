@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.ts';
-import { applySchema, getEvent, insertEvent, listDead, replay } from './db.ts';
+import { applySchema, getEvent, insertEvent, listDead, replay, stats } from './db.ts';
 
 const webhookBody = z.looseObject({ type: z.string().min(1) });
 const eventParams = z.object({ id: z.uuid() });
@@ -54,6 +54,8 @@ export function buildApp(): FastifyInstance {
     }
     return reply.code(202).send({ id: params.data.id });
   });
+
+  app.get('/stats', async () => stats());
 
   return app;
 }

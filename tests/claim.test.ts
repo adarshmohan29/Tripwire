@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
-import { applySchema, claim, complete, getEvent, insertEvent, pool } from '../src/db.ts';
+import { applySchema, claim, complete, getEvent, insertEvent, pool, stats } from '../src/db.ts';
 
 const LEASE_MS = 30_000;
 
@@ -73,4 +73,12 @@ test('stale worker cannot complete after its lease is reclaimed', async () => {
   await claim(LEASE_MS);
   await complete(stale);
   expect(await getEvent(id)).toMatchObject({ status: 'running', attempts: 2 });
+});
+
+test('stats counts events by status and lists running ones', async () => {
+  await queue();
+  const id = await queue();
+  await pool.query("UPDATE events SET next_run_at = now() + interval '1 hour' WHERE id <> $1", [id]);
+  await claim(LEASE_MS);
+  expect(await stats()).toEqual({ counts: { queued: 1, running: 1 }, running: [{ id, attempts: 1 }] });
 });

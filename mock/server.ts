@@ -21,10 +21,9 @@ export function buildMock(): FastifyInstance {
     if (effectBody.safeParse(req.body).data?.poison) {
       return reply.code(500).send({ error: 'poison' });
     }
-    if (config.MOCK_DEDUPE && applied.has(key)) return { ok: true, key };
-    applied.set(key, (applied.get(key) ?? 0) + 1);
-    // The effect is applied but the caller never hears so: the lost response that
-    // idempotency keys exist for.
+    if (!config.MOCK_DEDUPE || !applied.has(key)) applied.set(key, (applied.get(key) ?? 0) + 1);
+    // The effect stands but the caller never hears so: the lost response idempotency keys exist
+    // for. Replays of a seen key can be lost too, as on a real network.
     if (Math.random() < config.MOCK_FAIL_RATE) {
       return reply.code(500).send({ error: 'lost response' });
     }

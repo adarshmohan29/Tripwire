@@ -123,3 +123,19 @@ export async function replay(id: string): Promise<boolean> {
   );
   return rowCount === 1;
 }
+
+export async function stats(): Promise<{
+  counts: Record<string, number>;
+  running: { id: string; attempts: number }[];
+}> {
+  const counts = await pool.query<{ status: string; count: number }>(
+    'SELECT status, count(*)::int AS count FROM events GROUP BY status',
+  );
+  const running = await pool.query<{ id: string; attempts: number }>(
+    "SELECT id, attempts FROM events WHERE status = 'running'",
+  );
+  return {
+    counts: Object.fromEntries(counts.rows.map((r) => [r.status, r.count])),
+    running: running.rows,
+  };
+}
