@@ -37,6 +37,9 @@ services:
     environment:
       DATABASE_URL: postgres://tripwire:tripwire@db:5432/tripwire
       PORT: "4000"
+      MOCK_FAIL_RATE: ${MOCK_FAIL_RATE:-0}
+      MOCK_LATENCY_MS: ${MOCK_LATENCY_MS:-0}
+      MOCK_DEDUPE: ${MOCK_DEDUPE:-true}
 
   tests:
     <<: *app

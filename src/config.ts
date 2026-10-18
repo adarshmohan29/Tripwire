@@ -6,5 +6,8 @@ export const config = z
     PORT: z.coerce.number().int().default(3000),
     LEASE_MS: z.coerce.number().int().positive().default(30_000),
     POLL_MS: z.coerce.number().int().positive().default(500),
+    MOCK_FAIL_RATE: z.coerce.number().min(0).max(1).default(0),
+    MOCK_LATENCY_MS: z.coerce.number().int().nonnegative().default(0),
+    MOCK_DEDUPE: z.stringbool().default(true),
   })
   .parse(process.env);

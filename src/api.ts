@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.ts';
-import { applySchema, getEvent, insertEvent } from './db.ts';
+import { applySchema, getEvent, insertEvent, listDead, replay } from './db.ts';
 
 const webhookBody = z.looseObject({ type: z.string().min(1) });
 const eventParams = z.object({ id: z.uuid() });
@@ -43,6 +43,16 @@ export function buildApp(): FastifyInstance {
     const event = params.success ? await getEvent(params.data.id) : undefined;
     if (!event) return reply.code(404).send({ error: 'not found' });
     return event;
+  });
+
+  app.get('/dead', async () => listDead());
+
+  app.post('/dead/:id/replay', async (req, reply) => {
+    const params = eventParams.safeParse(req.params);
+    if (!params.success || !(await replay(params.data.id))) {
+      return reply.code(404).send({ error: 'no dead event with that id' });
+    }
+    return reply.code(202).send({ id: params.data.id });
   });
 
   return app;

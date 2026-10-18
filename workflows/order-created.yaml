@@ -1,0 +1,9 @@
+on: order.created
+max_attempts: 5
+steps:
+  - id: charge
+    action: http.post
+    url: http://mock:4000/charge
+  - id: notify
+    action: http.post
+    url: http://mock:4000/notify

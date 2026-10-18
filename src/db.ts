@@ -82,3 +82,42 @@ export async function complete(id: string): Promise<void> {
     [id],
   );
 }
+
+export async function recordStep(eventId: string, stepId: string): Promise<void> {
+  await pool.query(
+    'INSERT INTO step_effects (event_id, step_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [eventId, stepId],
+  );
+}
+
+export async function fail(
+  id: string,
+  error: string,
+  delayMs: number,
+  maxAttempts: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE events
+     SET status = CASE WHEN attempts >= $4 THEN 'dead' ELSE 'queued' END,
+         next_run_at = now() + $3 * interval '1 millisecond',
+         locked_until = NULL, last_error = $2
+     WHERE id = $1 AND status = 'running'`,
+    [id, error, delayMs, maxAttempts],
+  );
+}
+
+export async function listDead(): Promise<EventRow[]> {
+  const { rows } = await pool.query<EventRow>(
+    "SELECT * FROM events WHERE status = 'dead' ORDER BY created_at",
+  );
+  return rows;
+}
+
+export async function replay(id: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE events SET status = 'queued', attempts = 0, next_run_at = now()
+     WHERE id = $1 AND status = 'dead'`,
+    [id],
+  );
+  return rowCount === 1;
+}
