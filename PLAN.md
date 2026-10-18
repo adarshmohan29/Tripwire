@@ -18,7 +18,7 @@ All six phases are done. The latest real results are in `TEST_REPORT.md`: 41/41 
 | 3 Workflows, Retries, Dead Letter | `0a49a57 phase 3: workflows, retries, dead letter` | `MOCK_FAIL_RATE=0.3`, 50 events: all succeeded, applied = 1 per key; poison event `dead` with 5 attempts |
 | 4 Crash Safety | `1eb5191 phase 4: crash safety`, `d14bf69 phase 4: fence stale workers by attempts` | 3 crash tests pass against real processes; `docker kill` mid-load leaves nothing in `running` |
 | 5 Chaos Harness | `7186c3d phase 5: chaos harness` | Main run exits 0 (lost 0, duplicates 0); `--no-idempotency` exits 1 (duplicates > 0) |
-| 6 Polish | `phase 6: polish, docs and test report` | README, status page, test report; fresh clone runs from the README |
+| 6 Polish | `17c8b45 phase 6: polish, docs and test report`, `phase 6: isolate test database` | README, status page, test report; fresh clone runs from the README |
 
 ---
 
@@ -47,6 +47,7 @@ All six phases are done. The latest real results are in `TEST_REPORT.md`: 41/41 
 | The harness writes `chaos/last-run.json`, and `chaos/check.ts` can run standalone | 5 | The verdict can be re-derived from recorded facts. |
 | The harness drains on its own events with a 3-minute deadline | 5 | A test leaves an event parked an hour ahead, and waiting on global counts hung the harness. Past the deadline, unfinished events count as lost, so a stuck event fails the run rather than hanging it. |
 | Latency is measured from creation to the last step recorded | 5 | There is no `finished_at` column. The report labels it accurately. |
+| Tests use a separate `testdb` service (Postgres 16, in memory, profile `test`) | 6 | Sharing the stack's `db` let running workers claim test events, which broke the crash tests, and left test rows behind; a parked one hung the chaos harness. A separate service needs no code changes and no init script. |
 | `GET /stats` returns `{ counts, attempts, oldestQueuedMs, running }` | 5–6 | The harness uses `running` for recovery timing; the status page uses the rest. |
 
 ---

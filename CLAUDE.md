@@ -55,7 +55,7 @@ A chaos harness attacks the running system and verifies both guarantees. **The h
 - `vitest` for tests
 - `tsx` to run TypeScript in development
 - Node's built-in `fetch` with `AbortSignal.timeout` for HTTP calls
-- Docker Compose runs everything: `db`, `api`, `worker`, `mock`, `tests`
+- Docker Compose runs everything: `db`, `api`, `worker`, `mock`, `tests`, plus `testdb`, a separate in-memory Postgres used only by `tests` (profile `test`)
 - Docker runtime on the dev machine is **Docker Desktop**. It is installed in user mode, so its CLI lives in `/Applications/Docker.app/Contents/Resources/bin` (on `PATH` via `~/.zprofile`). Docker Desktop must be running before any `docker` command.
 
 **Postgres is the ONLY datastore and also the queue**, using `SELECT ... FOR UPDATE SKIP LOCKED`.
@@ -99,7 +99,7 @@ Do not create files outside this layout without asking.
 - **Never delete or weaken a failing test to make it pass.** Fix the code, or tell me why the test is wrong.
 - **Never say tests pass unless you ran them and saw the output.** Run them with `docker compose run --rm tests`.
 - Run `npx tsc --noEmit` before declaring a phase done.
-- Run `docker compose down` before `docker compose run --rm tests`: tests share the stack's database, and running workers claim test events.
+- Tests run against `testdb`, never the stack's `db`, so they can run while the stack is up. Keep it that way: never point `tests` at `db`.
 
 ---
 
@@ -119,7 +119,7 @@ Do not create files outside this layout without asking.
 ```sh
 npm ci                                # host deps (chaos harness, tsc)
 docker compose up -d --build          # build and start everything
-docker compose down                   # stop it (required before tests: they share the DB)
+docker compose down                   # stop the stack (add --profile test to also stop testdb)
 docker compose run --rm tests         # run the test suite
 docker compose logs -f worker         # follow worker logs
 docker compose up -d --scale worker=3 # run three workers

@@ -175,8 +175,7 @@ Each phase's Done-when was also checked by hand on a fresh database:
 ## How to reproduce
 
 ```sh
-docker compose down                     # tests share the stack's database, so stop the workers first
-docker compose run --rm tests
+docker compose run --rm tests           # uses the separate testdb; safe while the stack is up
 npx tsc --noEmit
 npx tsx chaos/run.ts --events 1000 --duplicates 3 --kills 5 --fail-rate 0.2 --poison 10
 npx tsx chaos/run.ts --events 1000 --duplicates 3 --kills 5 --fail-rate 0.2 --poison 10 --no-idempotency
@@ -187,5 +186,5 @@ Pass `--seed <n>` to repeat a run's delivery order and kill schedule. Timing, an
 
 ## Known caveats
 
-- **Tests and the running stack share one database.** If the `worker` containers are running during `docker compose run --rm tests`, they claim test events and the crash tests fail. Always run `docker compose down` first.
+- **Test isolation (fixed after this report's run).** At the time of this run, tests shared the stack's database, so the stack was stopped first. Tests now use a separate `testdb`. A re-check with the stack up and 3 workers running gave 41/41 twice, with the stack's `db` unchanged (3 events and 6 step records before and after).
 - **Tripwire's side is at-least-once.** Exactly-once effects depend on the downstream deduplicating by `Idempotency-Key`. The control run shows what happens when it doesn't.

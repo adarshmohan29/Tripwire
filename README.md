@@ -57,7 +57,7 @@ curl -s localhost:3000/events/<uuid>     # status, attempts, and the steps alrea
 
 Open **http://localhost:3000** for the live status page.
 
-To stop everything, run `docker compose down`. Add `-v` to wipe the database as well.
+To stop everything, run `docker compose --profile test down`; the profile flag also stops the test database. Add `-v` to wipe the stack's database as well.
 
 ---
 
@@ -79,7 +79,8 @@ flowchart LR
 | `api` | Receives webhooks and deduplicates them on insert. Serves event lookup, the dead letter list, replay, stats and the status page. |
 | `worker` | One process per container, scaled with `--scale worker=N`. Claims an event, runs its workflow, then marks the result. |
 | `mock` | A fake downstream that applies each `Idempotency-Key` once. It can simulate lost responses, latency and poison events, and it counts every call. |
-| `tests` | Runs the test suite against the real Postgres. Only started by `docker compose run --rm tests`. |
+| `tests` | Runs the test suite. Only started by `docker compose run --rm tests`. |
+| `testdb` | A separate Postgres 16 used only by `tests`, kept in memory (`tmpfs`). Running workers never see test events, and tests never write to the stack's `db`. |
 
 ### Design decisions
 
@@ -260,12 +261,11 @@ Latency in the report is measured from creation to the last step being recorded,
 ## Testing
 
 ```sh
-docker compose down               # the tests share the stack's database, so stop the workers first
-docker compose run --rm tests     # 41 tests, against the real Postgres
+docker compose run --rm tests     # 41 tests, against a real Postgres (testdb); safe while the stack is up
 npx tsc --noEmit                  # strict type check
 ```
 
-- **What runs:** the integration tests use the real Postgres from Compose; the database is never mocked. The crash tests start real worker child processes and kill them.
+- **What runs:** the integration tests use a real Postgres, `testdb`, never a mock. It's separate from the stack's `db`, so the tests can run while the stack is up and leave nothing behind in it. The crash tests start real worker child processes and kill them.
 - **One file at a time:** test files run one after another (`--no-file-parallelism`), because some of them truncate the `events` table.
 - **What each file proves:** see [TEST_REPORT.md](TEST_REPORT.md).
 
@@ -347,4 +347,3 @@ Watch the status page during step 4: running events freeze when a worker is kill
 - **One workflow per event type.** If two files declare the same `on:`, the last one loaded wins silently.
 - **Workflows are linear.** There's no branching or parallel steps, and no per-step retry policy.
 - **Workers poll** every `POLL_MS` when idle, rather than being woken by `LISTEN/NOTIFY`.
-- **Tests share the stack's database.** Stop the stack before running them.

@@ -41,7 +41,28 @@ services:
       MOCK_LATENCY_MS: ${MOCK_LATENCY_MS:-0}
       MOCK_DEDUPE: ${MOCK_DEDUPE:-true}
 
+  # Separate from db so running workers never claim test events and tests never leave rows in
+  # the stack's data. tmpfs keeps it in memory: fast, and empty whenever the container is recreated.
+  testdb:
+    image: postgres:16
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: tripwire
+      POSTGRES_PASSWORD: tripwire
+      POSTGRES_DB: tripwire_test
+    tmpfs: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tripwire"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
   tests:
     <<: *app
     command: npm test
     profiles: ["test"]
+    environment:
+      DATABASE_URL: postgres://tripwire:tripwire@testdb:5432/tripwire_test
+    depends_on:
+      testdb:
+        condition: service_healthy
