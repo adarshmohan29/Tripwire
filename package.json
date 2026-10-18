@@ -11,7 +11,7 @@
     "api": "tsx src/api.ts",
     "worker": "tsx src/worker.ts",
     "mock": "tsx mock/server.ts",
-    "test": "vitest run"
+    "test": "vitest run --no-file-parallelism"
   },
   "dependencies": {
     "fastify": "^5.12.7",

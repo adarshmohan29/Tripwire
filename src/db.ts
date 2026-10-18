@@ -4,7 +4,7 @@ import { config } from './config.ts';
 
 export const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 
-export type EventRow = {
+type EventRow = {
   id: string;
   source: string;
   idem_key: string;
@@ -20,7 +20,10 @@ export type EventRow = {
 
 export async function applySchema(): Promise<void> {
   const sql = await readFile(new URL('../schema.sql', import.meta.url), 'utf8');
-  await pool.query(sql);
+  // api and every worker apply the schema on start; concurrent CREATE ... IF NOT EXISTS can
+  // still collide, so serialize them. A multi-statement query is one implicit transaction,
+  // which holds the xact lock until the schema is committed.
+  await pool.query(`SELECT pg_advisory_xact_lock(hashtext('tripwire.schema'));\n${sql}`);
 }
 
 export async function insertEvent(
@@ -51,4 +54,31 @@ export async function getEvent(
     [id],
   );
   return { ...event.rows[0], steps: steps.rows };
+}
+
+export async function claim(leaseMs: number): Promise<EventRow | undefined> {
+  const { rows } = await pool.query<EventRow>(
+    `UPDATE events
+     SET status = 'running', attempts = attempts + 1,
+         locked_until = now() + $1 * interval '1 millisecond'
+     WHERE id = (
+       SELECT id FROM events
+       WHERE (status = 'queued' AND next_run_at <= now())
+          OR (status = 'running' AND locked_until < now())
+       ORDER BY next_run_at
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`,
+    [leaseMs],
+  );
+  return rows[0];
+}
+
+export async function complete(id: string): Promise<void> {
+  await pool.query(
+    `UPDATE events SET status = 'succeeded', locked_until = NULL
+     WHERE id = $1 AND status = 'running'`,
+    [id],
+  );
 }

@@ -1,6 +1,11 @@
-import { pool } from './db.ts';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { config } from './config.ts';
+import { applySchema, claim, complete } from './db.ts';
 
-await pool.query('SELECT 1');
-console.log('worker ready');
-// Keeps the process alive until the claim loop exists (Phase 2).
-setInterval(() => {}, 60_000);
+await applySchema();
+
+for (;;) {
+  const event = await claim(config.LEASE_MS);
+  if (event) await complete(event.id);
+  else await sleep(config.POLL_MS);
+}
