@@ -1,0 +1,29 @@
+{
+  "name": "tripwire",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Event-driven Automation with Proven Reliability",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "api": "tsx src/api.ts",
+    "worker": "tsx src/worker.ts",
+    "mock": "tsx mock/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

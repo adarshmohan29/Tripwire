@@ -1,0 +1,44 @@
+x-app: &app
+  build: .
+  environment:
+    DATABASE_URL: postgres://tripwire:tripwire@db:5432/tripwire
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tripwire
+      POSTGRES_PASSWORD: tripwire
+      POSTGRES_DB: tripwire
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tripwire"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  api:
+    <<: *app
+    command: npm run api
+    ports:
+      - "3000:3000"
+
+  worker:
+    <<: *app
+    command: npm run worker
+
+  mock:
+    <<: *app
+    command: npm run mock
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgres://tripwire:tripwire@db:5432/tripwire
+      PORT: "4000"
+
+  tests:
+    <<: *app
+    command: npm test
+    profiles: ["test"]
