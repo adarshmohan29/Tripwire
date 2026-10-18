@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { actions } from './actions.ts';
+import { config } from './config.ts';
 import { getEvent, recordStep } from './db.ts';
 
 const stepSchema = z.discriminatedUnion('action', [
@@ -49,6 +50,8 @@ export async function runWorkflow(
   for (const step of workflow.steps) {
     if (done.has(step.id)) continue;
     await runStep(event, step);
+    // Test hook: exit between the downstream effect and its record, the gap idempotency keys cover.
+    if (step.id === config.CRASH_AFTER_STEP) process.exit(1);
     await recordStep(event.id, step.id);
   }
 }

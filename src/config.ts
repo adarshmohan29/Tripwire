@@ -9,5 +9,7 @@ export const config = z
     MOCK_FAIL_RATE: z.coerce.number().min(0).max(1).default(0),
     MOCK_LATENCY_MS: z.coerce.number().int().nonnegative().default(0),
     MOCK_DEDUPE: z.stringbool().default(true),
+    WORKFLOWS_DIR: z.string().default('workflows'),
+    CRASH_AFTER_STEP: z.string().optional(),
   })
   .parse(process.env);

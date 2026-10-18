@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { delay } from './backoff.ts';
 import { config } from './config.ts';
 import { applySchema, claim, complete, fail } from './db.ts';
@@ -29,6 +29,6 @@ export async function work(workflows: Map<string, Workflow>): Promise<boolean> {
 // Tests import work without starting the loop.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await applySchema();
-  const workflows = await loadWorkflows(fileURLToPath(new URL('../workflows', import.meta.url)));
+  const workflows = await loadWorkflows(config.WORKFLOWS_DIR);
   for (;;) if (!(await work(workflows))) await sleep(config.POLL_MS);
 }
