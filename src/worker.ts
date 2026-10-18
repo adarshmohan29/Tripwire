@@ -12,17 +12,17 @@ export async function work(workflows: Map<string, Workflow>): Promise<boolean> {
   const workflow = workflows.get(event.type);
   if (!workflow) {
     // Retrying cannot help an event no workflow handles, so it goes straight to dead.
-    await fail(event.id, `no workflow for type ${event.type}`, 0, 0);
+    await fail(event, `no workflow for type ${event.type}`, 0, 0);
     return true;
   }
   try {
     await runWorkflow(event, workflow);
   } catch (err) {
     if (!(err instanceof Error)) throw err;
-    await fail(event.id, err.message, delay(event.attempts), workflow.max_attempts);
+    await fail(event, err.message, delay(event.attempts), workflow.max_attempts);
     return true;
   }
-  await complete(event.id);
+  await complete(event);
   return true;
 }
 

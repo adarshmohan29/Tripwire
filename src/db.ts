@@ -75,11 +75,13 @@ export async function claim(leaseMs: number): Promise<EventRow | undefined> {
   return rows[0];
 }
 
-export async function complete(id: string): Promise<void> {
+// attempts is the fencing token: each claim bumps it, so a worker whose lease was reclaimed
+// holds a stale value and its write matches no row.
+export async function complete(event: { id: string; attempts: number }): Promise<void> {
   await pool.query(
     `UPDATE events SET status = 'succeeded', locked_until = NULL
-     WHERE id = $1 AND status = 'running'`,
-    [id],
+     WHERE id = $1 AND status = 'running' AND attempts = $2`,
+    [event.id, event.attempts],
   );
 }
 
@@ -91,7 +93,7 @@ export async function recordStep(eventId: string, stepId: string): Promise<void>
 }
 
 export async function fail(
-  id: string,
+  event: { id: string; attempts: number },
   error: string,
   delayMs: number,
   maxAttempts: number,
@@ -101,8 +103,8 @@ export async function fail(
      SET status = CASE WHEN attempts >= $4 THEN 'dead' ELSE 'queued' END,
          next_run_at = now() + $3 * interval '1 millisecond',
          locked_until = NULL, last_error = $2
-     WHERE id = $1 AND status = 'running'`,
-    [id, error, delayMs, maxAttempts],
+     WHERE id = $1 AND status = 'running' AND attempts = $5`,
+    [event.id, error, delayMs, maxAttempts, event.attempts],
   );
 }
 

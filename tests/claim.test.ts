@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
-import { applySchema, claim, insertEvent, pool } from '../src/db.ts';
+import { applySchema, claim, complete, getEvent, insertEvent, pool } from '../src/db.ts';
 
 const LEASE_MS = 30_000;
 
@@ -61,4 +61,16 @@ test('claim increments attempts', async () => {
 
 test('claim returns nothing when no event is claimable', async () => {
   expect(await claim(LEASE_MS)).toBeUndefined();
+});
+
+test('stale worker cannot complete after its lease is reclaimed', async () => {
+  const id = await queue();
+  const stale = await claim(LEASE_MS);
+  if (!stale) throw new Error('expected a claimable event');
+  await pool.query("UPDATE events SET locked_until = now() - interval '1 second' WHERE id = $1", [
+    id,
+  ]);
+  await claim(LEASE_MS);
+  await complete(stale);
+  expect(await getEvent(id)).toMatchObject({ status: 'running', attempts: 2 });
 });
