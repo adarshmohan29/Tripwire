@@ -6,6 +6,20 @@ Rules in `CLAUDE.md` apply to every phase. Work one phase at a time; a phase end
 
 **Prerequisite**: Docker Desktop installed and running (it provides the Docker engine, CLI and Compose). No other container runtime is used.
 
+## Status
+
+All six phases are done. The latest real results are in `TEST_REPORT.md`: 41/41 tests pass, and the chaos run has lost 0 and duplicate effects 0, while the control run catches 394 duplicate effects.
+
+| Phase | Commit | Done-when result |
+|---|---|---|
+| 0 Skeleton | `bccc6c4 phase 0: skeleton` | All services up, `/health` ok, 2 tests pass |
+| 1 Ingress with Dedup | `90920f4 phase 1: webhook ingress with dedup` | Same webhook twice: same id, `duplicate: true`, `count = 1` |
+| 2 Worker, Claim and Lease | `8b49c31 phase 2: worker claim and lease` | 3 workers and 100 events: all `succeeded`, `attempts = 1` (repeated 3 times) |
+| 3 Workflows, Retries, Dead Letter | `0a49a57 phase 3: workflows, retries, dead letter` | `MOCK_FAIL_RATE=0.3`, 50 events: all succeeded, applied = 1 per key; poison event `dead` with 5 attempts |
+| 4 Crash Safety | `1eb5191 phase 4: crash safety`, `d14bf69 phase 4: fence stale workers by attempts` | 3 crash tests pass against real processes; `docker kill` mid-load leaves nothing in `running` |
+| 5 Chaos Harness | `7186c3d phase 5: chaos harness` | Main run exits 0 (lost 0, duplicates 0); `--no-idempotency` exits 1 (duplicates > 0) |
+| 6 Polish | `phase 6: polish, docs and test report` | README, status page, test report; fresh clone runs from the README |
+
 ---
 
 ## 1. Design Decisions
@@ -16,6 +30,24 @@ Rules in `CLAUDE.md` apply to every phase. Work one phase at a time; a phase end
 | Lease via `locked_until` instead of heartbeats | A crashed worker needs no cleanup: its lease simply expires and the claim query picks the job up again. Recovery is one `WHERE` clause, not a separate liveness protocol. The cost is that recovery waits up to one lease length. |
 | Step-level idempotency key `Idempotency-Key: {eventId}:{stepId}` sent downstream | `step_effects` alone cannot close the gap between "downstream call succeeded" and "we recorded it": a crash there causes a retry. The key lets the downstream recognise the retry. **Exactly-once effect requires the downstream to dedupe by this key.** Tripwire delivers at-least-once; the mock honours `Idempotency-Key` the way Stripe does, which turns that into exactly-once effect. |
 | One worker process per container, scaled by running more containers | Killing a container is then exactly killing a worker, which is what the chaos harness does with `docker kill`. No in-process concurrency to reason about; scaling is `--scale worker=N`. |
+
+### Decisions made during the build
+
+| Decision | Phase | Why |
+|---|---|---|
+| The worker applies the schema too, under `pg_advisory_xact_lock` | 2 | On a fresh database, workers started before the API had created the tables and crashed with `42P01`. The lock serialises concurrent `CREATE ... IF NOT EXISTS`. |
+| Tests run one file at a time (`--no-file-parallelism`) | 2 | The claim, worker and crash tests truncate `events`. |
+| Inline SQL is allowed in `tests/` | 1 | The "SQL only in `src/db.ts`" rule covers `src/`. Tests use small queries for setup and assertions. |
+| A malformed id on `GET /events/:id` or replay returns `404` | 1 | An id that can't exist is unknown. Postgres never sees an invalid uuid. |
+| The action registry is typed as a correlated union | 3 | `actions[step.action](event, step)` type-checks with no `as`. |
+| `WORKFLOWS_DIR` config, defaulting to `<repo>/workflows` | 4 | Crash tests start real workers against their own temporary workflow pointing at an in-test mock. |
+| `attempts` is a fencing token for `complete` and `fail` | 4 | Without it, a worker that stalled past its lease could overwrite the run of the worker that reclaimed the event. Covered by `stale worker cannot complete after its lease is reclaimed`. |
+| `MOCK_FAIL_RATE` also loses responses to replayed keys | 5 | Fairness: retries can fail in reality too. Some ordinary events may then end `dead`, which is allowed. The Phase 3 tests use rate 0 and stay deterministic. |
+| Chaos kills at random 0.5–2.5s intervals, from a seeded PRNG (`--seed`) | 5 | A fixed rhythm can keep missing bad moments. The seed makes a failing run repeatable. |
+| The harness writes `chaos/last-run.json`, and `chaos/check.ts` can run standalone | 5 | The verdict can be re-derived from recorded facts. |
+| The harness drains on its own events with a 3-minute deadline | 5 | A test leaves an event parked an hour ahead, and waiting on global counts hung the harness. Past the deadline, unfinished events count as lost, so a stuck event fails the run rather than hanging it. |
+| Latency is measured from creation to the last step recorded | 5 | There is no `finished_at` column. The report labels it accurately. |
+| `GET /stats` returns `{ counts, attempts, oldestQueuedMs, running }` | 5–6 | The harness uses `running` for recovery timing; the status page uses the rest. |
 
 ---
 

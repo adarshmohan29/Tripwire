@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
+import { buildApp } from '../src/api.ts';
 import { applySchema, claim, complete, getEvent, insertEvent, pool, stats } from '../src/db.ts';
 
 const LEASE_MS = 30_000;
@@ -80,5 +81,29 @@ test('stats counts events by status and lists running ones', async () => {
   const id = await queue();
   await pool.query("UPDATE events SET next_run_at = now() + interval '1 hour' WHERE id <> $1", [id]);
   await claim(LEASE_MS);
-  expect(await stats()).toEqual({ counts: { queued: 1, running: 1 }, running: [{ id, attempts: 1 }] });
+  expect(await stats()).toEqual({
+    counts: { queued: 1, running: 1 },
+    attempts: { '0': 1, '1': 1 },
+    oldestQueuedMs: expect.any(Number),
+    running: [{ id, attempts: 1 }],
+  });
+});
+
+test('stats returns counts by status', async () => {
+  const app = buildApp();
+  await queue();
+  await queue();
+  await claim(LEASE_MS);
+  const res = await app.inject({ method: 'GET', url: '/stats' });
+  await app.close();
+  expect(res.statusCode).toBe(200);
+  expect(res.json<{ counts: Record<string, number> }>().counts).toEqual({ queued: 1, running: 1 });
+});
+
+test('status page is served at /', async () => {
+  const app = buildApp();
+  const res = await app.inject({ method: 'GET', url: '/' });
+  await app.close();
+  expect(res.headers['content-type']).toMatch(/^text\/html/);
+  expect(res.body).toContain('/stats');
 });

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -56,6 +57,10 @@ export function buildApp(): FastifyInstance {
   });
 
   app.get('/stats', async () => stats());
+
+  app.get('/', async (_req, reply) =>
+    reply.type('text/html').send(await readFile(new URL('../status.html', import.meta.url))),
+  );
 
   return app;
 }

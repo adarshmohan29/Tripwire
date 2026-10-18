@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tripwire Status</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --card: #fff; --line: #e7e5e4;
+          --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #1d4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --card: #292524; --line: #44403c;
+            --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #93c5fd; }
+  }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 22px; }
+  p { margin: 4px 0 20px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .label { color: var(--muted); font-size: 13px; }
+  .value { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  code { font-size: 13px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tripwire</h1>
+  <p>Event-driven Automation with Proven Reliability · <span id="updated">connecting…</span></p>
+  <div class="grid">
+    <div class="card"><div class="label">Queued</div><div class="value" id="queued" style="color: var(--warn)">–</div></div>
+    <div class="card"><div class="label">Running</div><div class="value" id="running" style="color: var(--run)">–</div></div>
+    <div class="card"><div class="label">Succeeded</div><div class="value" id="succeeded" style="color: var(--ok)">–</div></div>
+    <div class="card"><div class="label">Dead</div><div class="value" id="dead" style="color: var(--bad)">–</div></div>
+    <div class="card"><div class="label">Oldest queued</div><div class="value" id="oldest">–</div></div>
+  </div>
+  <h2>Attempts per event</h2>
+  <table><thead><tr><th>Attempts</th><th>Events</th></tr></thead><tbody id="attempts"></tbody></table>
+  <h2>Running now</h2>
+  <table><thead><tr><th>Event</th><th>Attempt</th></tr></thead><tbody id="runningList"></tbody></table>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  function rows(tbody, pairs) {
+    tbody.replaceChildren(...pairs.map((cells) => {
+      const tr = document.createElement('tr');
+      for (const c of cells) {
+        const td = document.createElement('td');
+        td.textContent = c;
+        tr.append(td);
+      }
+      return tr;
+    }));
+  }
+  async function refresh() {
+    try {
+      const s = await (await fetch('/stats')).json();
+      for (const k of ['queued', 'running', 'succeeded', 'dead']) $(k).textContent = s.counts[k] ?? 0;
+      $('oldest').textContent = s.oldestQueuedMs == null ? '–' : `${(s.oldestQueuedMs / 1000).toFixed(1)}s`;
+      rows($('attempts'), Object.entries(s.attempts));
+      rows($('runningList'), s.running.map((r) => [r.id, r.attempts]));
+      $('updated').textContent = `updated ${new Date().toLocaleTimeString()}`;
+    } catch {
+      $('updated').textContent = 'API unreachable, retrying…';
+    }
+  }
+  refresh();
+  setInterval(refresh, 1000);
+</script>
+</body>
+</html>

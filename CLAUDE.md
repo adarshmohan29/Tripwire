@@ -38,6 +38,7 @@ A chaos harness attacks the running system and verifies both guarantees. **The h
 - The idempotency key is enforced by a `UNIQUE` constraint with `ON CONFLICT DO NOTHING`. Never "check then insert".
 - A job is claimed by one atomic `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`.
 - A running job holds a lease (`locked_until`). An expired lease makes it claimable again.
+- `complete` and `fail` are fenced by the claim's `attempts` (`WHERE ... AND attempts = $n`), so a worker whose lease was reclaimed cannot change the event.
 - Each step's effect is recorded in `step_effects(event_id, step_id)` and sent downstream with header `Idempotency-Key: {eventId}:{stepId}`.
 - Retries use exponential backoff with jitter. After `max_attempts` the event becomes `dead`.
 - Never mark an event `succeeded` until all steps have finished.
@@ -67,18 +68,22 @@ Not allowed: Redis, BullMQ, any ORM, NestJS, Express.
 
 | Path | Purpose |
 |---|---|
-| `src/api.ts` | Fastify routes: `POST /webhooks/:source`, `GET /events/:id`, `GET /dead`, `POST /dead/:id/replay`, `GET /stats` |
+| `src/api.ts` | Fastify routes: `POST /webhooks/:source`, `GET /events/:id`, `GET /dead`, `POST /dead/:id/replay`, `GET /stats`, `GET /health`, `GET /` (status page) |
 | `src/config.ts` | The only place environment variables are read, validated with zod |
-| `src/db.ts` | Pool, schema loader, and ALL SQL: insert, claim, complete, fail |
+| `src/db.ts` | Pool, schema loader, and ALL SQL: insert, claim, complete, fail, record step, dead list, replay, stats |
 | `src/worker.ts` | Loop: claim → run workflow → mark result |
 | `src/workflows.ts` | Load YAML, validate with zod, run steps in order, skip steps already done |
 | `src/actions.ts` | `http.post` and `log`, in a plain object registry |
 | `src/backoff.ts` | `delay(attempt)` with exponential backoff and jitter |
 | `mock/server.ts` | Fake downstream API |
-| `chaos/run.ts`, `chaos/check.ts` | Chaos harness: attack the system, then verify both guarantees |
+| `chaos/run.ts`, `chaos/check.ts` | Chaos harness: attack the system, then verify both guarantees. `chaos/last-run.json` is the generated run record (gitignored) |
 | `workflows/*.yaml` | Workflow definitions |
 | `schema.sql` | Database schema |
+| `status.html` | Live status page served at `GET /`, polls `/stats`, no framework |
 | `tests/` | Unit and integration tests |
+| `README.md` | Project documentation: architecture, API, config, failure table, chaos results, demo |
+| `TEST_REPORT.md` | Latest real test and chaos output. Regenerate from real runs only |
+| `PLAN.md` | Build plan, phase status, decisions made during the build |
 | `docker-compose.yml`, `Dockerfile`, `.dockerignore` | Runtime |
 | `package.json`, `tsconfig.json`, `.gitignore` | Project config |
 
@@ -94,6 +99,7 @@ Do not create files outside this layout without asking.
 - **Never delete or weaken a failing test to make it pass.** Fix the code, or tell me why the test is wrong.
 - **Never say tests pass unless you ran them and saw the output.** Run them with `docker compose run --rm tests`.
 - Run `npx tsc --noEmit` before declaring a phase done.
+- Run `docker compose down` before `docker compose run --rm tests`: tests share the stack's database, and running workers claim test events.
 
 ---
 
@@ -111,12 +117,19 @@ Do not create files outside this layout without asking.
 ## Commands
 
 ```sh
+npm ci                                # host deps (chaos harness, tsc)
 docker compose up -d --build          # build and start everything
+docker compose down                   # stop it (required before tests: they share the DB)
 docker compose run --rm tests         # run the test suite
 docker compose logs -f worker         # follow worker logs
 docker compose up -d --scale worker=3 # run three workers
-npx tsx chaos/run.ts --events 1000    # run the chaos harness
+npx tsc --noEmit                      # type check
+npx tsx chaos/run.ts --events 1000 --duplicates 3 --kills 5 --fail-rate 0.2 --poison 10
+npx tsx chaos/run.ts ... --no-idempotency   # control run: must exit non-zero
+npx tsx chaos/check.ts                # re-check chaos/last-run.json
 ```
+
+Environment variables (all read in `src/config.ts`): `DATABASE_URL`, `PORT`, `LEASE_MS`, `POLL_MS`, `WORKFLOWS_DIR`, `MOCK_FAIL_RATE`, `MOCK_LATENCY_MS`, `MOCK_DEDUPE`, `CRASH_AFTER_STEP` (test hook).
 
 ---
 

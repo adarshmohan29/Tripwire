@@ -126,16 +126,31 @@ export async function replay(id: string): Promise<boolean> {
 
 export async function stats(): Promise<{
   counts: Record<string, number>;
+  attempts: Record<string, number>;
+  oldestQueuedMs: number | null;
   running: { id: string; attempts: number }[];
 }> {
-  const counts = await pool.query<{ status: string; count: number }>(
-    'SELECT status, count(*)::int AS count FROM events GROUP BY status',
-  );
-  const running = await pool.query<{ id: string; attempts: number }>(
-    "SELECT id, attempts FROM events WHERE status = 'running'",
-  );
+  const [counts, attempts, oldest, running] = await Promise.all([
+    pool.query<{ key: string; count: number }>(
+      'SELECT status AS key, count(*)::int AS count FROM events GROUP BY status',
+    ),
+    pool.query<{ key: string; count: number }>(
+      'SELECT attempts::text AS key, count(*)::int AS count FROM events GROUP BY attempts',
+    ),
+    pool.query<{ ms: number | null }>(
+      `SELECT (extract(epoch FROM now() - min(created_at)) * 1000)::float8 AS ms
+       FROM events WHERE status = 'queued'`,
+    ),
+    pool.query<{ id: string; attempts: number }>(
+      "SELECT id, attempts FROM events WHERE status = 'running'",
+    ),
+  ]);
+  const byKey = (rows: { key: string; count: number }[]) =>
+    Object.fromEntries(rows.map((r) => [r.key, r.count]));
   return {
-    counts: Object.fromEntries(counts.rows.map((r) => [r.status, r.count])),
+    counts: byKey(counts.rows),
+    attempts: byKey(attempts.rows),
+    oldestQueuedMs: oldest.rows[0].ms,
     running: running.rows,
   };
 }
